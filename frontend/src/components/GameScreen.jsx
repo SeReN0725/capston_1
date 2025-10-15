@@ -1,12 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import useGameStore, { CHARACTERS } from "../store/gameStore";
-import {
-  generateAIResponse,
-  speechToText,
-  textToSpeech,
-} from "../services/aiService";
-import NarrationBox from "./NarrationBox";
-import ConversationHistory from "./ConversationHistory";
+import { generateAIResponse, speechToText } from "../services/aiService";
 
 const GameScreen = () => {
   const {
@@ -27,10 +21,7 @@ const GameScreen = () => {
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [showHint, setShowHint] = useState(true);
   const [inputMethod, setInputMethod] = useState("text"); // 'text' or 'voice'
-  const messagesEndRef = useRef(null);
-  const chatContainerRef = useRef(null);
 
   // 배경 이미지 결정
   const getBackground = () => {
@@ -40,11 +31,6 @@ const GameScreen = () => {
     if (currentCharacter === "seyeon") return "/backgrounds/library.svg";
     return "/backgrounds/classroom.jpg";
   };
-
-  // 자동 스크롤
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   // 메시지 전송
   const handleSendMessage = () => {
@@ -86,7 +72,6 @@ const GameScreen = () => {
     const currentInputMethod = method || inputMethod;
     setInputText("");
     setIsLoading(true);
-    setShowHint(false);
 
     // 사용자 메시지 추가
     addMessage({
@@ -157,28 +142,74 @@ const GameScreen = () => {
     removeMessage(timestamp);
   };
 
-  // 현재 대화 메시지 가져오기 (내레이션 제외)
-  const getCurrentDialogue = () => {
-    const dialogueMessages = messages.filter(
-      (msg) =>
-        msg.type === "character" || msg.type === "user" || msg.type === "hint"
-    );
-    return dialogueMessages[dialogueMessages.length - 1];
-  };
-
-  // 사용자 입력 가능 여부 체크
-  const canUserInput = () => {
-    // 힌트가 표시되었거나, 캐릭터 대화가 있고 힌트가 없는 경우
-    const hasHint = messages.some((msg) => msg.type === "hint");
-    const hasCharacterDialogue = messages.some(
-      (msg) => msg.type === "character"
-    );
-    return hasHint || (hasCharacterDialogue && currentCharacter);
-  };
-
-  const currentDialogue = getCurrentDialogue();
   const character = currentCharacter ? CHARACTERS[currentCharacter] : null;
-  const inputEnabled = canUserInput();
+
+  // 입력창 렌더링 (중복 제거)
+  const renderInputSection = () => (
+    <div className="flex gap-3 items-center max-w-5xl mx-auto">
+      <input
+        type="text"
+        value={inputText}
+        onChange={(e) => setInputText(e.target.value)}
+        onKeyPress={handleKeyPress}
+        placeholder={
+          character ? `${character.name}에게 말을 걸어보세요...` : ""
+        }
+        className="flex-1 px-6 py-4 bg-white/15 backdrop-blur-sm text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/30 text-base font-light rounded-lg"
+        disabled={isLoading || isListening}
+      />
+      <button
+        onClick={handleVoiceInput}
+        className={`px-5 py-4 transition-all rounded-lg text-xl ${
+          isListening
+            ? "bg-red-500 text-white"
+            : "bg-white/20 hover:bg-white/30 text-white"
+        }`}
+        disabled={isLoading}
+        title="음성 입력"
+      >
+        🎤
+      </button>
+      <button
+        onClick={handleSendMessage}
+        disabled={!inputText.trim() || isLoading || isListening}
+        className="px-8 py-4 bg-white/20 hover:bg-white/30 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all rounded-lg text-base font-medium"
+      >
+        전송
+      </button>
+    </div>
+  );
+
+  // 우측 메뉴 버튼 렌더링 (중복 제거)
+  const renderMenuButtons = () => (
+    <div className="absolute top-0 right-0 flex flex-col gap-3 items-end pr-6">
+      <button
+        className="text-white hover:text-white/80 transition-colors text-sm font-normal tracking-wider drop-shadow-lg"
+        title="저장"
+      >
+        SAVE
+      </button>
+      <button
+        className="text-white hover:text-white/80 transition-colors text-sm font-normal tracking-wider drop-shadow-lg"
+        title="불러오기"
+      >
+        LOAD
+      </button>
+      <button
+        onClick={toggleIntimacyUI}
+        className="text-white hover:text-white/80 transition-colors text-sm font-normal tracking-wider drop-shadow-lg"
+        title="설정"
+      >
+        CONFIG
+      </button>
+      <button
+        className="text-white hover:text-white/80 transition-colors text-sm font-normal tracking-wider drop-shadow-lg"
+        title="타이틀로"
+      >
+        BACK TO TITLE
+      </button>
+    </div>
+  );
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -194,40 +225,18 @@ const GameScreen = () => {
       {/* 어두운 오버레이 */}
       <div className="absolute inset-0 bg-black/20" />
 
-      {/* 상단 우측 버튼들 - 비주얼 노벨 스타일 */}
-      <div className="absolute top-6 right-6 z-50 flex gap-2">
-        {/* 저장 버튼 */}
-        <button
-          className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-bold text-sm"
-          title="저장"
-        >
-          💾 저장
-        </button>
-        {/* 불러오기 버튼 */}
-        <button
-          className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-bold text-sm"
-          title="불러오기"
-        >
-          📂 불러오기
-        </button>
-        {/* 타이틀로 버튼 */}
-        <button
-          className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-bold text-sm"
-          title="타이틀로"
-        >
-          🏠 타이틀로
-        </button>
-        {/* 설정 버튼 */}
-        <button
-          onClick={toggleIntimacyUI}
-          className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-bold text-sm"
-          title="설정"
-        >
-          ⚙️ 설정
-        </button>
-      </div>
+      {/* 캐릭터 이미지 - 중앙 */}
+      {currentCharacter && (
+        <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+          <img
+            src={`/characters/${currentCharacter}.png`}
+            alt={character?.name}
+            className="h-[85vh] object-contain drop-shadow-2xl"
+          />
+        </div>
+      )}
 
-      {/* 상단 UI - 호감도 표시 (자동 숨김) - 대화 기록 버튼 아래 */}
+      {/* 호감도 UI - CONFIG 버튼으로 토글 */}
       <div
         className={`absolute top-20 left-4 z-50 bg-white/95 rounded-2xl shadow-2xl p-4 backdrop-blur-md transition-all duration-500 ${
           showIntimacyUI
@@ -265,235 +274,106 @@ const GameScreen = () => {
         </div>
       </div>
 
-      {/* 캐릭터 이미지 (중앙, 전체 높이) */}
-      {character && (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-0 h-full w-auto z-20 animate-fade-in">
-          <div className="h-full w-auto flex items-end justify-center">
-            {/* 캐릭터 이미지 또는 이모지 */}
-            {character.id === "yuri" ? (
-              <img
-                src="/characters/yuri.jpg"
-                alt="유리"
-                className="h-full w-auto object-contain"
-                style={{
-                  maxHeight: "100%",
-                  filter: "drop-shadow(0 0 20px rgba(0,0,0,0.3))",
-                }}
-              />
-            ) : (
-              <div
-                className="text-center"
-                style={{
-                  fontSize: "20rem",
-                  lineHeight: "1",
-                  opacity: 0.95,
-                  filter: "drop-shadow(0 0 20px rgba(0,0,0,0.3))",
-                }}
-              >
-                {character.id === "jiho" ? "👦" : "👩"}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 캐릭터 이름 박스 (좌측 상단) */}
-      {character && (
-        <div className="absolute left-8 top-[45%] z-30 animate-fade-in">
-          <div className="bg-gray-800/80 backdrop-blur-sm px-6 py-3 rounded-lg shadow-xl">
-            <span className="text-white font-bold text-lg">
-              {character.name}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* 대화 기록 컴포넌트 - 상단 버튼과 통합 */}
-      <ConversationHistory />
-
-      {/* 하단 대화창 - 비주얼 노벨 스타일 */}
+      {/* 하단 통합 텍스트 박스 - 비주얼 노벨 스타일 */}
       <div className="absolute bottom-0 left-0 right-0 z-40">
-        {/* 내레이션 표시 영역 */}
-        <div className="px-8 pb-4">
-          {messages.slice(-1).map((message, index) => {
-            if (message.type === "narration") {
-              return (
-                <div
-                  key={message.timestamp || index}
-                  className="mb-4 animate-fade-in cursor-pointer transition-all"
-                  onClick={() => handleNarrationClick(message.timestamp)}
-                  title="클릭하여 넘기기"
-                >
-                  <div className="bg-black/50 backdrop-blur-sm text-white px-8 py-6 rounded-xl shadow-2xl max-w-5xl mx-auto border-2 border-white/20">
-                    <p className="text-lg leading-relaxed whitespace-pre-line text-center">
-                      {message.content}
-                    </p>
-                    <div className="flex justify-center mt-4">
-                      <span className="text-white animate-bounce text-xl">
-                        ▼
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-            return null;
-          })}
-        </div>
+        {/* 최신 메시지 표시 (나레이션, 대화, 힌트 통합) */}
+        {(() => {
+          const latestMessage = messages.slice(-1)[0];
+          const isNarration = latestMessage?.type === "narration";
+          const isHint = latestMessage?.type === "hint";
+          const isCharacter = latestMessage?.type === "character";
+          // 나레이션이나 힌트는 클릭 가능, 캐릭터 대화는 입력 후 넘어가므로 클릭 불가
+          const canClick = isNarration || isHint;
 
-        {/* 대화 박스 - 비주얼 노벨 스타일 */}
-        {currentDialogue &&
-          (currentDialogue.type === "character" ||
-            currentDialogue.type === "hint") && (
-            <div className="px-8 pb-6">
+          // 메시지가 있는 경우
+          if (latestMessage && (isNarration || isHint || isCharacter)) {
+            return (
               <div
-                className={`bg-white/85 backdrop-blur-sm shadow-2xl px-10 py-8 animate-slide-up transition-all max-w-5xl mx-auto rounded-xl border-4 ${
-                  currentDialogue.type === "hint" || !inputEnabled
-                    ? "cursor-pointer border-purple-400/50"
-                    : "cursor-default border-pink-400/50"
+                className={`bg-black/65 backdrop-blur-sm px-20 py-8 ${
+                  canClick ? "cursor-pointer" : "cursor-default"
                 }`}
                 onClick={() => {
-                  if (currentDialogue.type === "hint" || !inputEnabled) {
-                    handleNarrationClick(currentDialogue.timestamp);
+                  if (canClick) {
+                    handleNarrationClick(latestMessage.timestamp);
                   }
                 }}
-                title={
-                  currentDialogue.type === "hint" || !inputEnabled
-                    ? "클릭하여 넘기기"
-                    : ""
-                }
+                title={canClick ? "클릭하여 넘기기" : ""}
               >
-                {currentDialogue.type === "character" && character && (
-                  <>
-                    <p className="text-gray-800 text-xl leading-relaxed mb-4">
-                      {currentDialogue.content}
-                    </p>
-                    {!inputEnabled && (
-                      <div className="flex justify-end">
-                        <span className="text-purple-400 animate-bounce text-xl">
-                          ▼
+                <div className="relative min-h-[120px]">
+                  {/* 중앙 텍스트 영역 */}
+                  <div className="text-center max-w-5xl mx-auto">
+                    {/* 캐릭터 이름 (캐릭터 대화일 때만) */}
+                    {isCharacter && character && (
+                      <div className="flex items-center justify-center gap-3 mb-4">
+                        <span className="text-white text-base drop-shadow-lg">
+                          ◆
+                        </span>
+                        <span className="text-white font-medium text-lg tracking-widest drop-shadow-lg">
+                          {character.name}
+                        </span>
+                        <span className="text-white text-base drop-shadow-lg">
+                          ◆
                         </span>
                       </div>
                     )}
-                  </>
-                )}
 
-                {currentDialogue.type === "hint" && (
-                  <>
-                    <p className="text-gray-600 text-base italic mb-3">
-                      {currentDialogue.content}
+                    {/* 텍스트 내용 */}
+                    <p
+                      className={`text-white text-lg leading-loose font-normal drop-shadow-lg mb-4 ${
+                        isHint ? "italic" : ""
+                      } ${isNarration ? "whitespace-pre-line" : ""}`}
+                    >
+                      {latestMessage.content}
                     </p>
-                    <div className="flex justify-end">
-                      <span className="text-purple-400 animate-bounce text-xl">
+
+                    {/* 진행 표시 */}
+                    <div className="flex justify-center mt-2">
+                      <span className="text-white text-2xl drop-shadow-lg">
                         ▼
                       </span>
                     </div>
-                  </>
-                )}
+                  </div>
+
+                  {/* 우측 메뉴 버튼들 */}
+                  {renderMenuButtons()}
+                </div>
+
+                {/* 하단 입력창 */}
+                <div className="mt-4 pt-4 border-t border-white/20">
+                  {renderInputSection()}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          }
 
-        {/* 입력 영역 - 우측 하단 버튼 스타일 */}
-        {currentCharacter && inputEnabled && (
-          <div className="absolute bottom-6 right-6 z-50 flex flex-col gap-2">
-            {/* 스킵 버튼 */}
-            <button
-              className="px-4 py-2 bg-white/90 hover:bg-white backdrop-blur-sm rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-bold text-sm text-gray-700"
-              title="스킵"
-            >
-              ⏭️ 스킵
-            </button>
-            {/* 자동 버튼 */}
-            <button
-              className="px-4 py-2 bg-white/90 hover:bg-white backdrop-blur-sm rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-bold text-sm text-gray-700"
-              title="자동"
-            >
-              ▶️ 자동
-            </button>
-            {/* 로그 버튼 */}
-            <button
-              className="px-4 py-2 bg-white/90 hover:bg-white backdrop-blur-sm rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-bold text-sm text-gray-700"
-              title="로그"
-            >
-              📜 로그
-            </button>
-          </div>
-        )}
+          // 메시지가 없을 때
+          if (currentCharacter) {
+            return (
+              <div className="bg-black/65 backdrop-blur-sm px-20 py-10">
+                {renderInputSection()}
 
-        {/* 입력창 - 하단 중앙 (입력 가능할 때만) */}
-        {currentCharacter && inputEnabled && (
-          <div className="px-8 pb-6">
-            <div className="max-w-5xl mx-auto flex gap-3 items-center">
-              {/* 텍스트 입력 */}
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder={
-                    character ? `${character.name}에게 말을 걸어보세요...` : ""
-                  }
-                  className="w-full px-6 py-4 bg-white/90 backdrop-blur-sm rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-lg text-lg border-2 border-purple-300/50"
-                  disabled={isLoading || isListening}
-                />
-                {isListening && (
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                {/* 로딩 표시 */}
+                {isLoading && (
+                  <div className="text-center mt-3">
+                    <div className="inline-flex gap-1">
+                      <span className="w-2 h-2 bg-white rounded-full animate-bounce" />
+                      <span
+                        className="w-2 h-2 bg-white rounded-full animate-bounce"
+                        style={{ animationDelay: "0.1s" }}
+                      />
+                      <span
+                        className="w-2 h-2 bg-white rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
+            );
+          }
 
-              {/* 음성 입력 버튼 */}
-              <button
-                onClick={handleVoiceInput}
-                className={`w-14 h-14 rounded-xl shadow-lg flex items-center justify-center text-2xl transition-all ${
-                  isListening
-                    ? "bg-red-500 text-white animate-pulse scale-110"
-                    : "bg-white/90 hover:bg-white text-gray-700 hover:scale-105 border-2 border-purple-300/50"
-                }`}
-                disabled={isLoading}
-                title="음성 입력"
-              >
-                🎤
-              </button>
-
-              {/* 전송 버튼 */}
-              <button
-                onClick={handleSendMessage}
-                disabled={!inputText.trim() || isLoading || isListening}
-                className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 text-lg"
-              >
-                전송
-              </button>
-            </div>
-
-            {/* 로딩 표시 */}
-            {isLoading && (
-              <div className="text-center mt-3">
-                <div className="inline-flex gap-1">
-                  <span className="w-2 h-2 bg-white rounded-full animate-bounce" />
-                  <span
-                    className="w-2 h-2 bg-white rounded-full animate-bounce"
-                    style={{ animationDelay: "0.1s" }}
-                  />
-                  <span
-                    className="w-2 h-2 bg-white rounded-full animate-bounce"
-                    style={{ animationDelay: "0.2s" }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 대화 대기 상태 */}
-        {!currentCharacter && (
-          <div className="bg-black/80 backdrop-blur-sm px-8 py-8 text-center">
-            <p className="text-white text-lg">스토리가 진행 중입니다...</p>
-          </div>
-        )}
+          return null;
+        })()}
       </div>
     </div>
   );
