@@ -1,0 +1,25 @@
+{
+  "name": "otaku_ai",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:server": "node backend/server.js",
+    "dev:client": "npm run dev --prefix frontend",
+    "dev": "concurrently -n server,client -c green,blue \"npm:dev:server\" \"npm:dev:client\"",
+    "build:client": "npm run build --prefix frontend",
+    "start": "node backend/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
