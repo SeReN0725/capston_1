@@ -18,6 +18,7 @@ const allowedModels = (process.env.ALLOWED_MODELS || defaultModel)
   .split(',')
   .map((m) => m.trim())
   .filter(Boolean);
+const siteTitle = process.env.X_TITLE || 'AI 친구 사귀기 시뮬레이션';
 
 // Restrict CORS to allowed origins (development default: http://localhost:5173)
 app.use(
@@ -40,14 +41,6 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// 단일 캐릭터 페르소나 설정값 (필요 시 여기 내용을 수정하세요)
-const CHARACTER_PERSONA = `
-너는 캐릭터 '아카리'다. 밝고 친근하며 약간 장난기가 있다.
-말투는 자연스러운 반말 위주로 필요 시 존댓말을 섞는다.
-상대를 존중하고 안전한 표현만 사용한다.
-응답은 2~3문장으로 간결하게, 상황을 이어가는 질문이나 제안을 포함한다.
-캐릭터로서 말하고 메타 설명은 하지 않는다.
-`;
 
 app.post('/api/ask', async (req, res) => {
   try {
@@ -92,15 +85,17 @@ app.post('/api/ask', async (req, res) => {
     const messages = hasPersona
       ? [
           { role: 'system', content: persona.trim() },
-          { role: 'user', content: question }
+          {
+            role: 'user',
+            content: hasScenario
+              ? `상황:\n${scenario}\n\n유저의 답변:\n${question}`
+              : question
+          }
         ]
       : hasScenario
       ? [
-          { role: 'system', content: CHARACTER_PERSONA },
-          {
-            role: 'user',
-            content: `상황:\n${scenario}\n\n유저의 답변:\n${question}\n\n위 캐릭터 페르소나를 유지하며 자연스럽게 반응해줘.`
-          }
+          { role: 'system', content: `상황:\n${scenario}\n\n지침: 메타 설명 없이 자연스러운 대화로만 답하고, 2~3문장으로 간결하게 응답.` },
+          { role: 'user', content: question }
         ]
       : [
           { role: 'user', content: question }
@@ -121,7 +116,7 @@ app.post('/api/ask', async (req, res) => {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': clientReferer,
-        'X-Title': 'otaku_AI LLM key test'
+        'X-Title': siteTitle
       },
       body: JSON.stringify(payload)
     });
