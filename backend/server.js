@@ -18,7 +18,6 @@ const allowedModels = (process.env.ALLOWED_MODELS || defaultModel)
   .split(',')
   .map((m) => m.trim())
   .filter(Boolean);
-const siteTitle = process.env.X_TITLE || 'AI 친구 사귀기 시뮬레이션';
 
 // Restrict CORS to allowed origins (development default: http://localhost:5173)
 app.use(
@@ -85,17 +84,15 @@ app.post('/api/ask', async (req, res) => {
     const messages = hasPersona
       ? [
           { role: 'system', content: persona.trim() },
-          {
-            role: 'user',
-            content: hasScenario
-              ? `상황:\n${scenario}\n\n유저의 답변:\n${question}`
-              : question
-          }
+          { role: 'user', content: question }
         ]
       : hasScenario
       ? [
-          { role: 'system', content: `상황:\n${scenario}\n\n지침: 메타 설명 없이 자연스러운 대화로만 답하고, 2~3문장으로 간결하게 응답.` },
-          { role: 'user', content: question }
+          { role: 'system', content: CHARACTER_PERSONA },
+          {
+            role: 'user',
+            content: `상황:\n${scenario}\n\n유저의 답변:\n${question}\n\n위 캐릭터 페르소나를 유지하며 자연스럽게 반응해줘.`
+          }
         ]
       : [
           { role: 'user', content: question }
@@ -116,7 +113,7 @@ app.post('/api/ask', async (req, res) => {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': clientReferer,
-        'X-Title': siteTitle
+        'X-Title': 'otaku_AI LLM key test'
       },
       body: JSON.stringify(payload)
     });
