@@ -1,7 +1,8 @@
 import { CHARACTERS } from '../store/gameStore';
+import { askAI } from './aiClient';
 
 // 백엔드 API 설정 (Vite 프록시로 연결)
-const BACKEND_ASK_URL = '/api/ask';
+
 
 // 캐릭터별 시스템 프롬프트 생성
 const generateSystemPrompt = (character, intimacy, storyPhase, context = '') => {
@@ -87,23 +88,7 @@ export const generateAIResponse = async (character, userMessage, conversationHis
       .join('\n');
     const scenario = `스토리 단계: ${storyPhase}\n캐릭터: ${CHARACTERS[character]?.name || character}\n최근 대화:\n${recentContext}`;
 
-    const response = await fetch(BACKEND_ASK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        question: userMessage,
-        persona: systemPrompt,
-        scenario
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`API 요청 실패: ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await askAI(userMessage, { persona: systemPrompt, scenario });
     const aiResponse = data?.answer || '대답을 가져오지 못했어요. 다시 시도해볼까?';
 
     // 친밀도 변화 계산 (캐릭터별 차등 적용)
