@@ -1,111 +1,75 @@
-import React from 'react';
-import useGameStore from '../store/gameStore';
+import React from "react";
+import useGameStore from "../store/gameStore";
 
 const OnboardingScreen = () => {
   const startGame = useGameStore((state) => state.startGame);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8 md:p-12 animate-fade-in">
-        {/* 타이틀 */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">
-            🎓 친구 사귀기
-          </h1>
-          <p className="text-xl text-gray-600">
-            AI 시뮬레이션 게임
-          </p>
-        </div>
+    <div className="min-h-screen relative overflow-hidden">
+      {/* 배경 이미지 */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: "url(/backgrounds/titlebg.png)",
+        }}
+      ></div>
 
-        {/* 게임 설명 */}
-        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">📖 스토리</h2>
-          <p className="text-gray-700 leading-relaxed mb-4">
-            고등학교 3학년 새 학기가 시작되었습니다.<br />
-            졸업까지 남은 6개월 동안 <span className="font-bold text-purple-600">3명의 친구</span>를 사귀는 것이 목표입니다.
-          </p>
-          <p className="text-gray-700 leading-relaxed">
-            다양한 성격의 친구들과 대화하며 친밀도를 쌓아보세요!
-          </p>
-        </div>
+      {/* 가독성을 위한 어두운 오버레이 */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-black/20 to-black/40"></div>
 
-        {/* 캐릭터 소개 */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">👥 등장인물</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* 유리 */}
-            <div className="bg-pink-50 rounded-xl p-4 border-2 border-pink-200">
-              <div className="text-center mb-2">
-                <span className="text-4xl">👧</span>
-              </div>
-              <h3 className="font-bold text-lg text-gray-800 text-center mb-1">유리</h3>
-              <p className="text-sm text-gray-600 text-center mb-2">ISFJ · 모범생</p>
-              <p className="text-xs text-gray-500 text-center">
-                책임감 강하고 따뜻한 반장 후보
-              </p>
+      {/* 하단 그라데이션 (캐릭터 가독성 향상) */}
+      <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-black/50 to-transparent"></div>
+
+      <div className="min-h-screen flex items-center justify-center p-8 relative z-10">
+        <div className="max-w-7xl w-full flex flex-col lg:flex-row items-center gap-12">
+          {/* 왼쪽: 캐릭터 이미지 */}
+          <div className="flex-1 relative h-[600px] lg:h-[750px] w-full max-w-3xl">
+            <img
+              src="/title/titlecharacter.png"
+              alt="게임 캐릭터들"
+              className="w-full h-full object-contain drop-shadow-2xl"
+              style={{ filter: "drop-shadow(0 10px 30px rgba(0,0,0,0.3))" }}
+            />
+          </div>
+
+          {/* 오른쪽: 타이틀 및 버튼 */}
+          <div className="flex-1 flex flex-col items-center text-center space-y-6 -mt-24">
+            {/* 게임 타이틀 로고 */}
+            <div>
+              <img
+                src="/title/titlelogo.png"
+                alt="AI 대화형 스토리 시뮬레이션 게임"
+                className="w-full max-w-sm lg:max-w-md drop-shadow-2xl mx-auto"
+                style={{ filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.5))" }}
+              />
             </div>
 
-            {/* 지호 */}
-            <div className="bg-blue-50 rounded-xl p-4 border-2 border-blue-200">
-              <div className="text-center mb-2">
-                <span className="text-4xl">👦</span>
-              </div>
-              <h3 className="font-bold text-lg text-gray-800 text-center mb-1">지호</h3>
-              <p className="text-sm text-gray-600 text-center mb-2">ESFP · 운동부</p>
-              <p className="text-xs text-gray-500 text-center">
-                밝고 유쾌한 친근한 친구
-              </p>
-            </div>
+            {/* 시작 버튼 */}
+            <button
+              onClick={startGame}
+              className="transform hover:scale-105 transition-all duration-300 cursor-pointer"
+            >
+              <img
+                src="/title/titlebtn.png"
+                alt="게임 시작"
+                className="w-auto h-12 lg:h-16 drop-shadow-xl"
+                style={{ filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.4))" }}
+              />
+            </button>
 
-            {/* 세연 */}
-            <div className="bg-purple-50 rounded-xl p-4 border-2 border-purple-200">
-              <div className="text-center mb-2">
-                <span className="text-4xl">👩</span>
-              </div>
-              <h3 className="font-bold text-lg text-gray-800 text-center mb-1">세연</h3>
-              <p className="text-sm text-gray-600 text-center mb-2">INTJ · 천재</p>
-              <p className="text-xs text-gray-500 text-center">
-                지적이고 냉정한 독서 동아리
+            {/* 부가 정보 */}
+            <div className="space-y-2 text-white text-sm drop-shadow-lg">
+              <p className="flex items-center gap-2 justify-center">
+                <span>👥</span>
+                <span>3명의 친구와 특별한 이야기를 만들어보세요</span>
+              </p>
+              <p className="flex items-center gap-2 justify-center">
+                <span>⏱️</span>
+                <span>예상 플레이 시간: 5~10분</span>
               </p>
             </div>
           </div>
         </div>
-
-        {/* 조작법 */}
-        <div className="bg-gray-50 rounded-2xl p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">🎮 조작법</h2>
-          <ul className="space-y-2 text-gray-700">
-            <li className="flex items-start">
-              <span className="mr-2">💬</span>
-              <span><strong>텍스트 입력:</strong> 채팅창에 직접 입력하여 대화</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">🎤</span>
-              <span><strong>음성 입력:</strong> 마이크 버튼을 눌러 음성으로 대화</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">❤️</span>
-              <span><strong>친밀도:</strong> 대화를 통해 친밀도를 100까지 올리세요</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">🎯</span>
-              <span><strong>목표:</strong> 졸업까지 3명의 친구를 사귀세요!</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* 시작 버튼 */}
-        <button
-          onClick={startGame}
-          className="w-full btn-primary text-xl py-4"
-        >
-          게임 시작하기 🚀
-        </button>
-
-        {/* 플레이 시간 안내 */}
-        <p className="text-center text-gray-500 text-sm mt-4">
-          ⏱️ 예상 플레이 시간: 5~10분
-        </p>
       </div>
     </div>
   );
