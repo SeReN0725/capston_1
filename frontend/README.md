@@ -73,7 +73,21 @@ cd frontend && npm run dev
 - 프론트엔드: `http://localhost:5173` (Vite 기본 포트)
 - 백엔드: `http://localhost:3000`
 
-프론트엔드는 `/api/*` 경로를 자동으로 `http://localhost:3000`으로 프록시합니다.
+## 백엔드 연동 및 프록시
+- 프론트는 `/api/*` 요청을 `http://localhost:3000`으로 자동 프록시합니다(`frontend/vite.config.js`).
+- 헬스체크: `GET /api/ping` → `{ ok: true }`로 연결 확인.
+- 대화 API: `POST /api/ask` 바디 `{ message | question, persona, scenario, model? }` → 응답 `{ answer, raw? }` (`EXPOSE_RAW=true`일 때 raw 포함).
+- API 키는 프론트에 저장하지 않습니다. 모든 키는 `backend/.env`에서만 관리합니다.
+
+## 서비스 계층 보완
+- `src/services/apiClient.js`: `/api` 호출용 fetch 래퍼
+- `src/services/aiClient.js`: `/api/ask` 전용 클라이언트
+- `src/services/aiService.js`: 페르소나/시나리오 생성, AI 호출, 친밀도 변화 계산, STT/TTS
+
+## 개발/배포 체크리스트
+- 개발 실행: 루트에서 `npm run dev` → 프론트(`5173`), 백엔드(`3000`) 동시 기동
+- 프록시 확인: 브라우저 `http://localhost:5173/api/ping` → `{ ok: true }`
+- 배포: `npm run build:client` 후 `NODE_ENV=production node backend/server.js`로 동일 오리진 서빙
 
 ### 4. 프로덕션 빌드
 

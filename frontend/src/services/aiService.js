@@ -49,7 +49,7 @@ const generateSystemPrompt = (character, intimacy, storyPhase, context = '') => 
 ## 현재 상황
 - **친밀도**: ${intimacy}/100 (${intimacyLevel})
 - **스토리 단계**: ${storyPhase === 'intro' ? '첫 만남' : storyPhase === 'development' ? '관계 발전' : storyPhase === 'climax' ? '중요한 시기' : '졸업 전'}
-${context ? `- **상황 맥락**: ${context}` : ''}
+${context ? `- **상황/행동 입력**: ${context}` : ''}
 
 ## 대화 스타일
 ${details.conversationStyle}
@@ -77,26 +77,43 @@ ${details.firstMeetingTone}
 };
 
 // AI 응답 생성
-export const generateAIResponse = async (character, userMessage, conversationHistory, intimacy, storyPhase) => {
+export const generateAIResponse = async (character, userMessage, conversationHistory, intimacy, storyPhase, userContext = '') => {
   try {
-    const systemPrompt = generateSystemPrompt(character, intimacy, storyPhase);
+    const systemPrompt = generateSystemPrompt(character, intimacy, storyPhase, userContext);
 
-    // 간단한 시나리오 컨텍스트 구성 (최근 대화 일부 + 스토리 단계)
+    // 간단한 시나리오 컨텍스트 구성 (최근 대화 일부 + 스토리 단계 + 사용자 상황/행동)
     const recentContext = conversationHistory
       .slice(-6)
       .map(m => `${m.type === 'user' ? '유저' : '캐릭터'}: ${m.content}`)
       .join('\n');
-    const scenario = `스토리 단계: ${storyPhase}\n캐릭터: ${CHARACTERS[character]?.name || character}\n최근 대화:\n${recentContext}`;
+    const scenario = `스토리 단계: ${storyPhase}\n캐릭터: ${CHARACTERS[character]?.name || character}\n최근 대화:\n${recentContext}${userContext ? `\n\n유저 상황/행동:\n${userContext}` : ''}`;
 
     const data = await askAI(userMessage, { persona: systemPrompt, scenario });
-    const aiResponse = data?.answer || '대답을 가져오지 못했어요. 다시 시도해볼까?';
+    const aiSpeech = data?.speech || data?.answer || '대답을 가져오지 못했어요. 다시 시도해볼까?';
 
     // 친밀도 변화 계산 (캐릭터별 차등 적용)
-    const intimacyChange = calculateIntimacyChange(userMessage, aiResponse, character);
+    const intimacyChange = calculateIntimacyChange(userMessage, aiSpeech, character);
+
+    // 사용자 입력 기반 캐릭터 감지 폴백
+    const detectNextCharacterFromText = (text) => {
+      if (!text) return null;
+      const t = text.toLowerCase();
+      if (t.includes('지호') || t.includes('jiho')) return 'jiho';
+      if (t.includes('유리') || t.includes('yuri')) return 'yuri';
+      if (t.includes('세연') || t.includes('seyeon') || t.includes('se-yeon') || t.includes('se yeon')) return 'seyeon';
+      return null;
+    };
+
+    const nextFromAI = data?.nextCharacter || null;
+    const nextFromContext = detectNextCharacterFromText(userContext) || detectNextCharacterFromText(userMessage);
+    const nextCharFinal = nextFromAI || nextFromContext;
 
     return {
-      response: aiResponse,
-      intimacyChange
+      response: aiSpeech,
+      intimacyChange,
+      situation: data?.situation || '',
+      action: data?.action || '',
+      nextCharacter: nextCharFinal,
     };
 
   } catch (error) {
@@ -120,145 +137,61 @@ export const generateAIResponse = async (character, userMessage, conversationHis
   }
 };
 
-// 캐릭터별 선호 키워드 및 성향
-const CHARACTER_PREFERENCES = {
-  yuri: {
-    positive: ['책', '공부', '도서관', '조용', '차분', '진지', '성적', '시험', '과제', '열심', '노력', '계획'],
-    negative: ['시끄', '파티', '술', '담배', '게임', '놀자'],
-    personality: 'calm' // 차분한 대화 선호
-  },
-  jiho: {
-    positive: ['농구', '운동', '게임', '재밌', '신나', '같이', '놀자', '친구', '파티', '축제', '웃', '즐거'],
-    negative: ['공부', '조용', '지루', '심심', '혼자'],
-    personality: 'energetic' // 활발한 대화 선호
-  },
-  seyeon: {
-    positive: ['과학', '논리', '철학', '책', '연구', '실험', '지적', '흥미로', '분석', '이론', '생각'],
-    negative: ['감정', '느낌', '별로', '시끄', '유치'],
-    personality: 'intellectual' // 지적인 대화 선호
-  }
+// 간단한 친밀도 변화 계산 (키워드 기반)
+export const calculateIntimacyChange = (userMessage, aiMessage, character) => {
+  const base = 3;
+  const positiveKeywords = ['고마워', '좋아', '재밌', '멋있', '대단', '최고', '응원'];
+  const negativeKeywords = ['싫어', '무서', '짜증', '화나', '지루', '실망'];
+
+  let change = base;
+  const msg = `${userMessage} ${aiMessage}`.toLowerCase();
+  positiveKeywords.forEach(k => { if (msg.includes(k)) change += 2; });
+  negativeKeywords.forEach(k => { if (msg.includes(k)) change -= 2; });
+
+  // 캐릭터별 가중치
+  if (character === 'yuri') change += 1; // 얘기 길수록 점수 조금 더
+  if (character === 'jiho') change += 0; // 기본값 유지
+  if (character === 'seyeon') change -= 1; // 처음엔 조금 엄격
+
+  return Math.max(1, change);
 };
 
-// 친밀도 변화 계산 (캐릭터 성향별 차등 적용)
-const calculateIntimacyChange = (userMessage, aiResponse, characterId) => {
-  let change = 3; // 기본 친밀도 증가 (감소)
-  
-  const prefs = CHARACTER_PREFERENCES[characterId];
-  if (!prefs) return change;
-  
-  const userLower = userMessage.toLowerCase();
-  
-  // 캐릭터 선호 키워드 체크
-  const positiveMatches = prefs.positive.filter(keyword => userLower.includes(keyword)).length;
-  const negativeMatches = prefs.negative.filter(keyword => userLower.includes(keyword)).length;
-  
-  // 선호 키워드 보너스 (각 키워드당 +2)
-  change += positiveMatches * 2;
-  
-  // 비선호 키워드 페널티 (각 키워드당 -3)
-  change -= negativeMatches * 3;
-  
-  // 공통 긍정 키워드
-  const commonPositive = ['좋아', '고마워', '재밌', '멋져', '최고', '같이', '함께', '친구', '도와', '응원'];
-  const commonNegative = ['싫어', '별로', '안 돼', '귀찮', '바빠', '관심없'];
-  
-  if (commonPositive.some(keyword => userLower.includes(keyword))) {
-    change += 2;
+// STT: 침묵 감지 기반 음성 입력
+export const speechToText = async () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    throw new Error('이 브라우저는 음성 인식을 지원하지 않습니다.');
   }
-  
-  if (commonNegative.some(keyword => userLower.includes(keyword))) {
-    change -= 4;
-  }
-  
-  // 메시지 길이에 따른 보너스 (관심도)
-  if (userMessage.length > 50) {
-    change += 3; // 긴 메시지는 진심이 담김
-  } else if (userMessage.length > 30) {
-    change += 1;
-  } else if (userMessage.length < 10) {
-    change -= 1; // 너무 짧은 메시지는 성의 없음
-  }
-  
-  // 질문 포함 시 보너스 (관심 표현)
-  if (userLower.includes('?') || userLower.includes('뭐') || userLower.includes('어떻') || 
-      userLower.includes('왜') || userLower.includes('언제')) {
-    change += 2;
-  }
-  
-  // 캐릭터 성향별 추가 보너스
-  switch (prefs.personality) {
-    case 'calm': // 유리: 정중하고 차분한 대화 선호
-      if (userMessage.includes('요') || userMessage.includes('습니다') || userMessage.includes('해요')) {
-        change += 2; // 존댓말 사용
-      }
-      if (userMessage.includes('!') || userMessage.includes('ㅋ') || userMessage.includes('ㅎ')) {
-        change -= 1; // 너무 들뜬 분위기
-      }
-      break;
-      
-    case 'energetic': // 지호: 활발하고 즐거운 대화 선호
-      if (userMessage.includes('!') || userMessage.includes('ㅋ') || userMessage.includes('ㅎ')) {
-        change += 2; // 밝은 분위기
-      }
-      if (userMessage.length < 15 && !userMessage.includes('!')) {
-        change -= 1; // 너무 무뚝뚝함
-      }
-      break;
-      
-    case 'intellectual': // 세연: 논리적이고 지적인 대화 선호
-      if (userMessage.includes('왜') || userMessage.includes('어떻게') || userMessage.includes('생각')) {
-        change += 2; // 사고를 자극하는 질문
-      }
-      if (userMessage.includes('ㅋ') || userMessage.includes('ㅎ') || userMessage.includes('ㅠ')) {
-        change -= 2; // 감정적인 표현
-      }
-      break;
-  }
-  
-  return Math.max(1, Math.min(15, change)); // 최소 1, 최대 15
-};
 
-// STT (Speech to Text) - 개선된 버전 (말 끝 자동 감지)
-export const speechToText = () => {
   return new Promise((resolve, reject) => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      reject(new Error('이 브라우저는 음성 인식을 지원하지 않습니다.'));
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    
     recognition.lang = 'ko-KR';
-    recognition.continuous = true; // 연속 인식 활성화
-    recognition.interimResults = true; // 중간 결과 활성화
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     let finalTranscript = '';
     let silenceTimer = null;
-    const SILENCE_DELAY = 1500; // 1.5초 침묵 후 종료
+
+    const SILENCE_DELAY = 900; // ms
 
     recognition.onresult = (event) => {
       let interimTranscript = '';
-      
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += transcript;
+          finalTranscript += transcript + ' ';
         } else {
           interimTranscript += transcript;
         }
       }
 
-      // 침묵 타이머 리셋
+      // 침묵 감지 → 자동 종료
       if (silenceTimer) {
         clearTimeout(silenceTimer);
       }
-
-      // 말이 끝난 것으로 판단되면 자동 종료
-      if (finalTranscript.trim()) {
+      if (interimTranscript.trim().length === 0) {
         silenceTimer = setTimeout(() => {
-          recognition.stop();
+          try { recognition.stop(); } catch (_) {}
         }, SILENCE_DELAY);
       }
     };
@@ -270,7 +203,7 @@ export const speechToText = () => {
       if (finalTranscript.trim()) {
         resolve(finalTranscript.trim());
       } else {
-        reject(new Error('음성이 인식되지 않았습니다.'));
+        reject(new Error('음성이 인식되지 않았습니다. 다시 시도해주세요.'));
       }
     };
 

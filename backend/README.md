@@ -30,3 +30,12 @@ Express 기반 백엔드로 OpenRouter Chat Completions API에 대한 프록시�
 ## 참고
 - 프론트엔드는 `http://localhost:5173`에서 실행되며 `/api`는 백엔드(`http://localhost:3000`)로 프록시됩니다.
 - CORS는 환경변수 `CORS_ORIGINS`에 지정된 Origin만 허용합니다(기본: `http://localhost:5173`).
+
+## 추가 정보
+- 헬스체크: `GET /api/ping` → `{ ok: true }`
+- 요청 바디: `message` 또는 `question` 중 하나의 비어있지 않은 문자열 필수. 선택: `persona`, `scenario`, `model`, `exposeRaw`
+- 응답 포맷: 기본 `{ answer }` (+ `EXPOSE_RAW=true`일 때 `{ raw }` 포함)
+- 에러 응답: 중앙 에러 핸들러를 통해 `{ message, code, details? }` JSON으로 통일
+- 보안/로깅/레이트리미트: `helmet`/`morgan`/`express-rate-limit`/`cors`/`express.json` 적용
+- Rate Limit: `RATE_LIMIT`(기본 60)으로 분당 요청 제한
+- 프로덕션: `NODE_ENV=production`에서 `frontend/dist` 정적 서빙 + SPA fallback

@@ -9,7 +9,7 @@ export const CHARACTERS = {
     personality: "책임감 강하고 조용하지만 따뜻함",
     speechStyle: "~요, ~죠",
     description: "내향형, 모범생, 반장 후보",
-    firstMeeting: "첫 등교, 교실에서 책을 떨어뜨림",
+    firstMeeting: "첫 등교, 교실에서 책을 떨어뜨렸어요. 혹시 주워주실 수 있을까요? 저는 유리라고 해요. 이번에 3학년 1반이에요.",
     firstDialogue:
       "아, 죄송해요... 책을 떨어뜨렸네요. 혹시 주워주실 수 있을까요? 저는 유리라고 해요. 이번에 3학년 1반이에요.",
     conversationHint:
@@ -90,6 +90,9 @@ const useGameStore = create((set, get) => ({
   // 현재 활성 캐릭터
   currentCharacter: null,
 
+  // 자동 스토리 진행/전환 허용 플래그 (기본 비활성화)
+  autoProgressEnabled: false,
+
   // 대화 기록
   messages: [],
 
@@ -124,7 +127,7 @@ const useGameStore = create((set, get) => ({
       messages: [],
     });
 
-    // 첫 번째 스토리 이벤트 자동 시작
+    // 첫 번째 스토리 이벤트 자동 시작 (초기 온보딩은 유지)
     setTimeout(() => {
       get().progressStory();
     }, 500);
@@ -326,6 +329,11 @@ const useGameStore = create((set, get) => ({
       });
     }
 
+    // 자동 진행 비활성화 시 종료
+    if (!get().autoProgressEnabled) {
+      return;
+    }
+
     // 스토리 자동 진행 체크 (대화 기반 장면 전환)
     const updatedState = get();
 
@@ -367,8 +375,7 @@ const useGameStore = create((set, get) => ({
       setTimeout(() => {
         get().addMessage({
           type: "system",
-          content:
-            "세 명의 친구들과 모두 인사를 나눴습니다. 이제 본격적으로 우정을 쌓아갈 시간입니다.",
+          content: "세연과의 관계가 많이 가까워졌습니다.",
         });
         setTimeout(() => get().progressStory(), 2000);
       }, 2000);

@@ -1,24 +1,20 @@
 const { generateReply } = require('../services/llmService');
 
-exports.askAI = async (req, res, next) => {
+async function askAI(req, res) {
   try {
-    const { message: msgBody, question, model, scenario, persona, exposeRaw } = req.body || {};
-    const message = typeof msgBody === 'string' && msgBody.trim() ? msgBody.trim() : (typeof question === 'string' ? question.trim() : '');
-    if (!message) {
-      const err = new Error('`message` or `question` must be a non-empty string');
-      err.status = 400;
-      return next(err);
-    }
-    if (message.length > 4000) {
-      const err = new Error('Message too long (max 4000 characters)');
-      err.status = 413;
-      return next(err);
-    }
+    const { message, persona, scenario, model } = req.body || {};
+    const referer = req.headers['referer'] || req.headers['origin'];
 
-    const referer = req.headers?.referer || req.headers?.origin || undefined;
-    const result = await generateReply(message, { model, scenario, persona, referer, exposeRaw });
-    res.json(result);
+    const result = await generateReply(message, { model, scenario, persona, referer });
+
+    // 프런트가 기대하는 구조에 맞춰 그대로 전달
+    // 가능한 경우: situation, speech, action, nextCharacter
+    // 폴백: answer만 존재
+    return res.json(result);
   } catch (err) {
-    next(err);
+    console.error('askAI error:', err);
+    res.status(err.status || 500).json({ error: err.message || 'Server error' });
   }
-};
+}
+
+module.exports = { askAI };

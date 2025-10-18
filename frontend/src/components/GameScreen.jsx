@@ -16,19 +16,23 @@ const GameScreen = () => {
     increaseIntimacy,
     progressStory,
     toggleIntimacyUI,
+    meetCharacter,
   } = useGameStore();
 
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [inputMethod, setInputMethod] = useState("text"); // 'text' or 'voice'
+  // 상황/행동 추가 입력칸
+  const [situationInput, setSituationInput] = useState("");
+  const [actionInput, setActionInput] = useState("");
 
   // 배경 이미지 결정
   const getBackground = () => {
     if (!currentCharacter) return "/backgrounds/classroom.jpg";
     if (currentCharacter === "yuri") return "/backgrounds/classroom.jpg";
-    if (currentCharacter === "jiho") return "/backgrounds/cafeteria.svg";
-    if (currentCharacter === "seyeon") return "/backgrounds/library.svg";
+    if (currentCharacter === "jiho") return "/backgrounds/cafeteria.jpg";
+    if (currentCharacter === "seyeon") return "/backgrounds/library.jpg";
     return "/backgrounds/classroom.jpg";
   };
 
@@ -92,30 +96,58 @@ const GameScreen = () => {
         (msg) => msg.type === "user" || msg.type === "character"
       );
 
-      const { response, intimacyChange } = await generateAIResponse(
+      // 유저 상황/행동 컨텍스트 구성
+      const userContextParts = [];
+      if (situationInput.trim()) userContextParts.push(`상황: ${situationInput.trim()}`);
+      if (actionInput.trim()) userContextParts.push(`행동: ${actionInput.trim()}`);
+      const userContext = userContextParts.join("\n");
+
+      const { response, intimacyChange, situation, action, nextCharacter } = await generateAIResponse(
         currentCharacter,
         messageText,
         characterMessages,
         intimacy[currentCharacter],
-        storyPhase
+        storyPhase,
+        userContext
       );
 
-      // AI 응답 추가
+      // 상황 나레이션이 있으면 먼저 추가 (클릭 필요)
+      if (situation) {
+        addMessage({
+          type: "narration",
+          content: situation,
+          requiresClick: true,
+        });
+      }
+
+      const contentWithAction = action ? `${response} (${action})` : response;
+
+      // AI 응답 추가 (행동 포함)
       addMessage({
         type: "character",
         character: currentCharacter,
-        content: response,
+        content: contentWithAction,
       });
 
-      // 대화 기록에 추가 (캐릭터 응답)
+      // 대화 기록에 추가 (캐릭터 응답, 행동 포함)
       addConversationHistory({
         type: "character",
         character: currentCharacter,
-        content: response,
+        content: contentWithAction,
       });
 
       // 친밀도 증가
       increaseIntimacy(currentCharacter, intimacyChange);
+
+      // API가 제안한 캐릭터 전환 적용
+      if (nextCharacter && nextCharacter !== currentCharacter && CHARACTERS[nextCharacter]) {
+        // 새 캐릭터를 만난 적 있으면 전환만, 없으면 첫 만남 연출
+        meetCharacter(nextCharacter);
+      }
+
+      // 상황/행동 입력은 일회성으로 초기화
+      setSituationInput("");
+      setActionInput("");
     } catch (error) {
       console.error("메시지 전송 오류:", error);
       addMessage({
@@ -144,16 +176,42 @@ const GameScreen = () => {
 
   const character = currentCharacter ? CHARACTERS[currentCharacter] : null;
 
+  const latestBlockingMessage = [...messages].reverse().find((m) => m.requiresClick);
+  const latestMessage = latestBlockingMessage || messages.slice(-1)[0];
+  const isNarration = latestMessage?.type === "narration";
+  const isHint = latestMessage?.type === "hint";
+  const isCharacter = latestMessage?.type === "character";
+  const canClick = Boolean(latestMessage?.requiresClick);
+
   // 입력창 렌더링 (중복 제거)
   const renderInputSection = () => (
     <div className="flex gap-3 items-center max-w-5xl mx-auto">
+      {/* 상황/행동 입력칸 */}
+      <input
+        type="text"
+        value={situationInput}
+        onChange={(e) => setSituationInput(e.target.value)}
+        placeholder="상황 설명 (선택)"
+        className="w-56 px-4 py-3 bg-white/15 backdrop-blur-sm text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/30 text-sm font-light rounded-lg"
+        disabled={isLoading || isListening}
+        title="현재 장면/상황 설명"
+      />
+      <input
+        type="text"
+        value={actionInput}
+        onChange={(e) => setActionInput(e.target.value)}
+        placeholder="행동 (선택)"
+        className="w-40 px-4 py-3 bg-white/15 backdrop-blur-sm text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/30 text-sm font-light rounded-lg"
+        disabled={isLoading || isListening}
+        title="내가 하고 싶은 행동"
+      />
       <input
         type="text"
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
         onKeyPress={handleKeyPress}
         placeholder={
-          character ? `${character.name}에게 말을 걸어보세요...` : ""
+          currentCharacter ? `${CHARACTERS[currentCharacter].name}에게 말을 걸어보세요...` : ""
         }
         className="flex-1 px-6 py-4 bg-white/15 backdrop-blur-sm text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/30 text-base font-light rounded-lg"
         disabled={isLoading || isListening}
@@ -172,10 +230,11 @@ const GameScreen = () => {
       </button>
       <button
         onClick={handleSendMessage}
-        disabled={!inputText.trim() || isLoading || isListening}
-        className="px-8 py-4 bg-white/20 hover:bg-white/30 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all rounded-lg text-base font-medium"
+        className="px-6 py-4 bg-white/20 hover:bg-white/30 text-white rounded-lg text-base"
+        disabled={isLoading || !currentCharacter}
+        title="메시지 보내기"
       >
-        전송
+        보내기
       </button>
     </div>
   );
@@ -277,103 +336,78 @@ const GameScreen = () => {
       {/* 하단 통합 텍스트 박스 - 비주얼 노벨 스타일 */}
       <div className="absolute bottom-0 left-0 right-0 z-40">
         {/* 최신 메시지 표시 (나레이션, 대화, 힌트 통합) */}
-        {(() => {
-          const latestMessage = messages.slice(-1)[0];
-          const isNarration = latestMessage?.type === "narration";
-          const isHint = latestMessage?.type === "hint";
-          const isCharacter = latestMessage?.type === "character";
-          // 나레이션이나 힌트는 클릭 가능, 캐릭터 대화는 입력 후 넘어가므로 클릭 불가
-          const canClick = isNarration || isHint;
-
-          // 메시지가 있는 경우
-          if (latestMessage && (isNarration || isHint || isCharacter)) {
-            return (
-              <div
-                className={`bg-black/65 backdrop-blur-sm px-20 py-8 ${
-                  canClick ? "cursor-pointer" : "cursor-default"
-                }`}
-                onClick={() => {
-                  if (canClick) {
-                    handleNarrationClick(latestMessage.timestamp);
-                  }
-                }}
-                title={canClick ? "클릭하여 넘기기" : ""}
-              >
-                <div className="relative min-h-[120px]">
-                  {/* 중앙 텍스트 영역 */}
-                  <div className="text-center max-w-5xl mx-auto">
-                    {/* 캐릭터 이름 (캐릭터 대화일 때만) */}
-                    {isCharacter && character && (
-                      <div className="flex items-center justify-center gap-3 mb-4">
-                        <span className="text-white text-base drop-shadow-lg">
-                          ◆
-                        </span>
-                        <span className="text-white font-medium text-lg tracking-widest drop-shadow-lg">
-                          {character.name}
-                        </span>
-                        <span className="text-white text-base drop-shadow-lg">
-                          ◆
-                        </span>
-                      </div>
-                    )}
-
-                    {/* 텍스트 내용 */}
-                    <p
-                      className={`text-white text-lg leading-loose font-normal drop-shadow-lg mb-4 ${
-                        isHint ? "italic" : ""
-                      } ${isNarration ? "whitespace-pre-line" : ""}`}
-                    >
-                      {latestMessage.content}
-                    </p>
-
-                    {/* 진행 표시 */}
-                    <div className="flex justify-center mt-2">
-                      <span className="text-white text-2xl drop-shadow-lg">
-                        ▼
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 우측 메뉴 버튼들 */}
-                  {renderMenuButtons()}
-                </div>
-
-                {/* 하단 입력창 */}
-                <div className="mt-4 pt-4 border-t border-white/20">
-                  {renderInputSection()}
-                </div>
-              </div>
-            );
-          }
-
-          // 메시지가 없을 때
-          if (currentCharacter) {
-            return (
-              <div className="bg-black/65 backdrop-blur-sm px-20 py-10">
-                {renderInputSection()}
-
-                {/* 로딩 표시 */}
-                {isLoading && (
-                  <div className="text-center mt-3">
-                    <div className="inline-flex gap-1">
-                      <span className="w-2 h-2 bg-white rounded-full animate-bounce" />
-                      <span
-                        className="w-2 h-2 bg-white rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      />
-                      <span
-                        className="w-2 h-2 bg-white rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      />
-                    </div>
+        {latestMessage && (isNarration || isHint || isCharacter) ? (
+          <div
+            className={`bg-black/65 backdrop-blur-sm px-20 py-8 ${
+              canClick ? "cursor-pointer" : "cursor-default"
+            }`}
+            onClick={() => {
+              if (canClick) {
+                handleNarrationClick(latestMessage.timestamp);
+              }
+            }}
+            title={canClick ? "클릭하여 넘기기" : ""}
+          >
+            <div className="relative min-h-[120px]">
+              {/* 중앙 텍스트 영역 */}
+              <div className="text-center max-w-5xl mx-auto">
+                {/* 캐릭터 이름 (캐릭터 대화일 때만) */}
+                {isCharacter && character && (
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    <span className="text-white text-base drop-shadow-lg">◆</span>
+                    <span className="text-white font-medium text-lg tracking-widest drop-shadow-lg">
+                      {character.name}
+                    </span>
+                    <span className="text-white text-base drop-shadow-lg">◆</span>
                   </div>
                 )}
-              </div>
-            );
-          }
 
-          return null;
-        })()}
+                {/* 텍스트 내용 */}
+                <p
+                  className={`text-white text-lg leading-loose font-normal drop-shadow-lg mb-4 ${
+                    isHint ? "italic" : ""
+                  } ${isNarration ? "whitespace-pre-line" : ""}`}
+                >
+                  {latestMessage.content}
+                </p>
+
+                {/* 진행 표시 */}
+                <div className="flex justify-center mt-2">
+                  <span className="text-white text-2xl drop-shadow-lg">▼</span>
+                </div>
+              </div>
+
+              {/* 우측 메뉴 버튼들 */}
+              {renderMenuButtons()}
+            </div>
+
+            {/* 하단 입력창 */}
+            <div className="mt-4 pt-4 border-t border-white/20">
+              {renderInputSection()}
+            </div>
+          </div>
+        ) : currentCharacter ? (
+          <div className="bg-black/65 backdrop-blur-sm px-20 py-10">
+            {renderInputSection()}
+
+            {/* 로딩 표시 */}
+            {isLoading && (
+              <div className="text-center mt-3">
+                <div className="inline-flex gap-1">
+                  <span className="w-2 h-2 bg-white rounded-full animate-bounce" />
+                  <span
+                    className="w-2 h-2 bg-white rounded-full animate-bounce"
+                    style={{ animationDelay: "0.1s" }}
+                  />
+                  <span
+                    className="w-2 h-2 bg-white rounded-full animate-bounce"
+                    style={{ animationDelay: "0.2s" }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
