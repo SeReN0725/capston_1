@@ -28,6 +28,16 @@ const GameScreen = () => {
   const [situationInput, setSituationInput] = useState("");
   const [actionInput, setActionInput] = useState("");
 
+  // 캐릭터 감지(행동/상황/메시지에서) 유틸
+  const detectCharacterFromText = (text) => {
+    if (!text) return null;
+    const t = text.toLowerCase();
+    if (t.includes("지호") || t.includes("jiho")) return "jiho";
+    if (t.includes("유리") || t.includes("yuri")) return "yuri";
+    if (t.includes("세연") || t.includes("seyeon") || t.includes("se-yeon") || t.includes("se yeon")) return "seyeon";
+    return null;
+  };
+
   // 배경 이미지 결정
   const getBackground = () => {
     if (!currentCharacter) return "/backgrounds/classroom.jpg";
@@ -48,38 +58,6 @@ const GameScreen = () => {
   useEffect(() => {
     setCharUrl(currentCharacter ? `/characters/${currentCharacter}.png` : null);
   }, [currentCharacter]);
-
-  // 메시지 전송
-  const handleSendMessage = () => {
-    handleSendMessageWithText(inputText);
-  };
-
-  // 음성 입력 (자동 전송)
-  const handleVoiceInput = async () => {
-    if (isListening || isLoading || !currentCharacter) return;
-
-    setIsListening(true);
-    setInputMethod("voice");
-    try {
-      const transcript = await speechToText();
-      setInputText(transcript);
-      setIsListening(false);
-
-      // 음성 인식 후 자동으로 메시지 전송
-      if (transcript.trim()) {
-        setTimeout(() => {
-          handleSendMessageWithText(transcript, "voice");
-        }, 300);
-      }
-    } catch (error) {
-      console.error("음성 인식 오류:", error);
-      setIsListening(false);
-      setInputMethod("text");
-      alert(
-        error.message || "음성 인식에 실패했습니다. 텍스트로 입력해주세요."
-      );
-    }
-  };
 
   // 텍스트로 메시지 전송
   const handleSendMessageWithText = async (text, method = "text") => {
@@ -104,22 +82,36 @@ const GameScreen = () => {
     });
 
     try {
-      // AI 응답 생성
-      const characterMessages = messages.filter(
-        (msg) => msg.type === "user" || msg.type === "character"
-      );
+      // 전환 의도 사전 감지: 행동/상황에서만 대상 캐릭터 추출
+      const requestedSwitch =
+        detectCharacterFromText(actionInput) ||
+        detectCharacterFromText(situationInput);
+      const activeCharacter =
+        requestedSwitch && CHARACTERS[requestedSwitch]
+          ? requestedSwitch
+          : currentCharacter;
 
-      // 유저 상황/행동 컨텍스트 구성
+      // 유저 컨텍스트 구성 (상황/행동)
       const userContextParts = [];
       if (situationInput.trim()) userContextParts.push(`상황: ${situationInput.trim()}`);
       if (actionInput.trim()) userContextParts.push(`행동: ${actionInput.trim()}`);
       const userContext = userContextParts.join("\n");
 
+      // 사전 전환: 현재 캐릭터와 다르면 먼저 만남 처리 (행동/상황 기반)
+      if (requestedSwitch && requestedSwitch !== currentCharacter && CHARACTERS[requestedSwitch]) {
+        meetCharacter(requestedSwitch);
+      }
+
+      // AI 응답 생성 전에 대화 히스토리 추출 (사용자/캐릭터 발화만)
+      const characterMessages = messages.filter(
+        (msg) => msg.type === "user" || msg.type === "character"
+      );
+
       const { response, intimacyChange, situation, action, nextCharacter } = await generateAIResponse(
-        currentCharacter,
+        activeCharacter,
         messageText,
         characterMessages,
-        intimacy[currentCharacter],
+        intimacy[activeCharacter],
         storyPhase,
         userContext
       );
@@ -138,25 +130,24 @@ const GameScreen = () => {
       // AI 응답 추가 (행동 포함)
       addMessage({
         type: "character",
-        character: currentCharacter,
+        character: activeCharacter,
         content: contentWithAction,
       });
 
       // 대화 기록에 추가 (캐릭터 응답, 행동 포함)
       addConversationHistory({
         type: "character",
-        character: currentCharacter,
+        character: activeCharacter,
         content: contentWithAction,
       });
 
       // 친밀도 증가
-      increaseIntimacy(currentCharacter, intimacyChange);
+      increaseIntimacy(activeCharacter, intimacyChange);
 
-      // API가 제안한 캐릭터 전환 적용
-      if (nextCharacter && nextCharacter !== currentCharacter && CHARACTERS[nextCharacter]) {
-        // 새 캐릭터를 만난 적 있으면 전환만, 없으면 첫 만남 연출
-        meetCharacter(nextCharacter);
-      }
+      // API가 제안한 캐릭터 전환(nextCharacter)은 즉시 적용하지 않음 (사용자 의도 기반으로만 전환)
+      // if (nextCharacter && nextCharacter !== activeCharacter && CHARACTERS[nextCharacter]) {
+      //   meetCharacter(nextCharacter);
+      // }
 
       // 상황/행동 입력은 일회성으로 초기화
       setSituationInput("");
@@ -165,30 +156,28 @@ const GameScreen = () => {
       // 비주얼 결정 AI 호출 및 적용
       try {
         const visuals = await generateVisuals({
-          currentCharacter,
+          currentCharacter: activeCharacter,
           nextCharacter,
           situation,
           action,
           speech: response,
-          persona: CHARACTERS[currentCharacter]?.persona,
+          persona: CHARACTERS[activeCharacter]?.persona,
         });
         if (visuals?.backgroundUrl) {
           setBgUrl(visuals.backgroundUrl);
         }
-        const effectiveCharacter = (nextCharacter && CHARACTERS[nextCharacter]) ? nextCharacter : currentCharacter;
-        if (visuals?.characterId && CHARACTERS[visuals.characterId] && visuals.characterId !== effectiveCharacter) {
-          meetCharacter(visuals.characterId);
-        }
-        // 표정 기반 캐릭터 이미지 적용 (에러 시 기본 이미지로 폴백)
-        if (visuals?.characterUrl) {
+        // 캐릭터 전환은 사용자의 행동/상황 의도에만 반응
+        const effectiveCharacter = activeCharacter;
+        // 표정 기반 캐릭터 이미지 적용 (제안된 캐릭터가 현재와 다르면 무시)
+        if (visuals?.characterUrl && (!visuals.characterId || visuals.characterId === effectiveCharacter)) {
           setCharUrl(visuals.characterUrl);
         } else {
-          setCharUrl(`/characters/${(visuals?.characterId || effectiveCharacter)}.png`);
+          setCharUrl(`/characters/${effectiveCharacter}.png`);
         }
       } catch (e) {
         // ignore visual errors and keep default background/character image
         console.warn('visuals error', e?.message || e);
-        setCharUrl(currentCharacter ? `/characters/${currentCharacter}.png` : null);
+        setCharUrl(activeCharacter ? `/characters/${activeCharacter}.png` : null);
       }
     } catch (error) {
       console.error("메시지 전송 오류:", error);
@@ -216,6 +205,36 @@ const GameScreen = () => {
     removeMessage(timestamp);
   };
 
+  // 메시지 전송 버튼 핸들러 (재추가)
+  const handleSendMessage = () => {
+    handleSendMessageWithText(inputText);
+  };
+
+  // 음성 입력 핸들러 (재추가)
+  const handleVoiceInput = async () => {
+    if (isListening || isLoading || !currentCharacter) return;
+
+    setIsListening(true);
+    setInputMethod("voice");
+    try {
+      const transcript = await speechToText();
+      setInputText(transcript);
+      setIsListening(false);
+
+      // 음성 인식 후 자동으로 메시지 전송
+      if (transcript.trim()) {
+        setTimeout(() => {
+          handleSendMessageWithText(transcript, "voice");
+        }, 300);
+      }
+    } catch (error) {
+      console.error("음성 인식 오류:", error);
+      setIsListening(false);
+      setInputMethod("text");
+      alert(error.message || "음성 인식에 실패했습니다. 텍스트로 입력해주세요.");
+    }
+  };
+
   const character = currentCharacter ? CHARACTERS[currentCharacter] : null;
 
   const latestBlockingMessage = [...messages].reverse().find((m) => m.requiresClick);
@@ -234,7 +253,7 @@ const GameScreen = () => {
   const canClick = Boolean(latestNarrationMsg);
   const showCharacterMsg = canClick ? latestCharacterMsgAfterNarration : latestCharacterMsgOverall;
 
-  // NEW: 현재 표시할 캐릭터/콘텐츠를 메시지 타입에 맞게 결정
+  // NEW: 현재 표시할 캐릭터/콘텐츠스 메시지 타입에 맞게 결정
   const displayedCharacterId = isNarration
     ? (showCharacterMsg?.character || null)
     : isHint
@@ -298,7 +317,7 @@ const GameScreen = () => {
         onClick={handleSendMessage}
         className="px-6 py-4 bg-white/20 hover:bg-white/30 text-white rounded-lg text-base"
         disabled={isLoading || !currentCharacter}
-        title="메시지 보내기"
+        title="메시지 전송"
       >
         보내기
       </button>
@@ -338,13 +357,13 @@ const GameScreen = () => {
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
+      {/* 배경/캐릭터 이미지 렌더링과 하단 박스는 기존 로직 유지 (표시 캐릭터/콘텐츠 계산 부분은 앞에서 수정) */}
       {/* 배경 이미지 */}
-      <div
-        className="absolute inset-0 bg-cover bg-center transition-all duration-1000"
-        style={{
-          backgroundImage: `url(${bgUrl || getBackground()})`,
-          filter: "brightness(0.85)",
-        }}
+      <img
+        src={bgUrl}
+        alt="background"
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{ filter: "brightness(0.85)" }}
       />
 
       {/* 어두운 오버레이 */}
