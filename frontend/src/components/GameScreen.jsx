@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import useGameStore, { CHARACTERS } from "../store/gameStore";
 import { generateAIResponse, speechToText } from "../services/aiService";
+import { generateVisuals } from "../services/visualService";
 
 const GameScreen = () => {
   const {
@@ -35,6 +36,18 @@ const GameScreen = () => {
     if (currentCharacter === "seyeon") return "/backgrounds/library.jpg";
     return "/backgrounds/classroom.jpg";
   };
+
+  // 동적 비주얼 배경 상태
+  const [bgUrl, setBgUrl] = useState(getBackground());
+  useEffect(() => {
+    setBgUrl(getBackground());
+  }, [currentCharacter]);
+
+  // 동적 캐릭터 이미지 URL (표정 포함)
+  const [charUrl, setCharUrl] = useState(currentCharacter ? `/characters/${currentCharacter}.png` : null);
+  useEffect(() => {
+    setCharUrl(currentCharacter ? `/characters/${currentCharacter}.png` : null);
+  }, [currentCharacter]);
 
   // 메시지 전송
   const handleSendMessage = () => {
@@ -148,6 +161,35 @@ const GameScreen = () => {
       // 상황/행동 입력은 일회성으로 초기화
       setSituationInput("");
       setActionInput("");
+
+      // 비주얼 결정 AI 호출 및 적용
+      try {
+        const visuals = await generateVisuals({
+          currentCharacter,
+          nextCharacter,
+          situation,
+          action,
+          speech: response,
+          persona: CHARACTERS[currentCharacter]?.persona,
+        });
+        if (visuals?.backgroundUrl) {
+          setBgUrl(visuals.backgroundUrl);
+        }
+        const effectiveCharacter = (nextCharacter && CHARACTERS[nextCharacter]) ? nextCharacter : currentCharacter;
+        if (visuals?.characterId && CHARACTERS[visuals.characterId] && visuals.characterId !== effectiveCharacter) {
+          meetCharacter(visuals.characterId);
+        }
+        // 표정 기반 캐릭터 이미지 적용 (에러 시 기본 이미지로 폴백)
+        if (visuals?.characterUrl) {
+          setCharUrl(visuals.characterUrl);
+        } else {
+          setCharUrl(`/characters/${(visuals?.characterId || effectiveCharacter)}.png`);
+        }
+      } catch (e) {
+        // ignore visual errors and keep default background/character image
+        console.warn('visuals error', e?.message || e);
+        setCharUrl(currentCharacter ? `/characters/${currentCharacter}.png` : null);
+      }
     } catch (error) {
       console.error("메시지 전송 오류:", error);
       addMessage({
@@ -178,10 +220,36 @@ const GameScreen = () => {
 
   const latestBlockingMessage = [...messages].reverse().find((m) => m.requiresClick);
   const latestMessage = latestBlockingMessage || messages.slice(-1)[0];
+  const latestNarrationMsg = [...messages].reverse().find((m) => m.type === "narration" && m.requiresClick);
+  const latestNarrationIndex = latestNarrationMsg ? messages.lastIndexOf(latestNarrationMsg) : -1;
+  const latestCharacterMsgOverall = [...messages].reverse().find((m) => m.type === "character");
+  const latestCharacterMsgAfterNarration = latestNarrationMsg
+    ? [...messages.slice(latestNarrationIndex + 1)]
+        .reverse()
+        .find((m) => m.type === "character")
+    : null;
   const isNarration = latestMessage?.type === "narration";
   const isHint = latestMessage?.type === "hint";
   const isCharacter = latestMessage?.type === "character";
-  const canClick = Boolean(latestMessage?.requiresClick);
+  const canClick = Boolean(latestNarrationMsg);
+  const showCharacterMsg = canClick ? latestCharacterMsgAfterNarration : latestCharacterMsgOverall;
+
+  // NEW: 현재 표시할 캐릭터/콘텐츠를 메시지 타입에 맞게 결정
+  const displayedCharacterId = isNarration
+    ? (showCharacterMsg?.character || null)
+    : isHint
+      ? currentCharacter
+      : isCharacter
+        ? latestMessage?.character
+        : null;
+
+  const displayedContent = isNarration
+    ? (showCharacterMsg?.content || null)
+    : isHint
+      ? latestMessage?.content
+      : isCharacter
+        ? latestMessage?.content
+        : null;
 
   // 입력창 렌더링 (중복 제거)
   const renderInputSection = () => (
@@ -219,9 +287,7 @@ const GameScreen = () => {
       <button
         onClick={handleVoiceInput}
         className={`px-5 py-4 transition-all rounded-lg text-xl ${
-          isListening
-            ? "bg-red-500 text-white"
-            : "bg-white/20 hover:bg-white/30 text-white"
+          isListening ? "bg-red-500 text-white" : "bg-white/20 hover:bg-white/30 text-white"
         }`}
         disabled={isLoading}
         title="음성 입력"
@@ -276,7 +342,7 @@ const GameScreen = () => {
       <div
         className="absolute inset-0 bg-cover bg-center transition-all duration-1000"
         style={{
-          backgroundImage: `url(${getBackground()})`,
+          backgroundImage: `url(${bgUrl || getBackground()})`,
           filter: "brightness(0.85)",
         }}
       />
@@ -288,9 +354,10 @@ const GameScreen = () => {
       {currentCharacter && (
         <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
           <img
-            src={`/characters/${currentCharacter}.png`}
+            src={charUrl || `/characters/${currentCharacter}.png`}
             alt={character?.name}
             className="h-[85vh] object-contain drop-shadow-2xl"
+            onError={(e) => { e.currentTarget.src = `/characters/${currentCharacter}.png`; }}
           />
         </div>
       )}
@@ -342,8 +409,8 @@ const GameScreen = () => {
               canClick ? "cursor-pointer" : "cursor-default"
             }`}
             onClick={() => {
-              if (canClick) {
-                handleNarrationClick(latestMessage.timestamp);
+              if (canClick && latestNarrationMsg) {
+                removeMessage(latestNarrationMsg.timestamp);
               }
             }}
             title={canClick ? "클릭하여 넘기기" : ""}
@@ -351,25 +418,34 @@ const GameScreen = () => {
             <div className="relative min-h-[120px]">
               {/* 중앙 텍스트 영역 */}
               <div className="text-center max-w-5xl mx-auto">
-                {/* 캐릭터 이름 (캐릭터 대화일 때만) */}
-                {isCharacter && character && (
+                {/* 캐릭터 이름 (표시할 캐릭터가 있을 때만) */}
+                {displayedCharacterId && (
                   <div className="flex items-center justify-center gap-3 mb-4">
                     <span className="text-white text-base drop-shadow-lg">◆</span>
                     <span className="text-white font-medium text-lg tracking-widest drop-shadow-lg">
-                      {character.name}
+                      {CHARACTERS[displayedCharacterId]?.name}
                     </span>
                     <span className="text-white text-base drop-shadow-lg">◆</span>
                   </div>
                 )}
 
-                {/* 텍스트 내용 */}
-                <p
-                  className={`text-white text-lg leading-loose font-normal drop-shadow-lg mb-4 ${
-                    isHint ? "italic" : ""
-                  } ${isNarration ? "whitespace-pre-line" : ""}`}
-                >
-                  {latestMessage.content}
-                </p>
+                {/* 텍스트 내용: 나레이션(있으면) + 캐릭터/힌트 콘텐츠 */}
+                {latestNarrationMsg && (
+                  <p
+                    className={`text-white text-lg leading-loose font-normal drop-shadow-lg mb-3 whitespace-pre-line`}
+                  >
+                    {latestNarrationMsg.content}
+                  </p>
+                )}
+                {displayedContent && (
+                  <p
+                    className={`text-white text-lg leading-loose font-normal drop-shadow-lg mb-4 ${
+                      isHint ? "italic" : ""
+                    }`}
+                  >
+                    {displayedContent}
+                  </p>
+                )}
 
                 {/* 진행 표시 */}
                 <div className="flex justify-center mt-2">

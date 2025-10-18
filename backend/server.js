@@ -7,6 +7,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const aiRoutes = require('./routes/aiRoutes');
+const visualRoutes = require('./routes/visualRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
@@ -35,6 +36,7 @@ app.use(rateLimit({ windowMs: 60 * 1000, max: Number(process.env.RATE_LIMIT) || 
 
 // Mount API routes
 app.use('/api', aiRoutes);
+app.use('/api', visualRoutes);
 
 // Static serving in production (same-origin)
 if (process.env.NODE_ENV === 'production') {

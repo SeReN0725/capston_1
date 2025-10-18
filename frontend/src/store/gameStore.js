@@ -9,9 +9,11 @@ export const CHARACTERS = {
     personality: "책임감 강하고 조용하지만 따뜻함",
     speechStyle: "~요, ~죠",
     description: "내향형, 모범생, 반장 후보",
-    firstMeeting: "첫 등교, 교실에서 책을 떨어뜨렸어요. 혹시 주워주실 수 있을까요? 저는 유리라고 해요. 이번에 3학년 1반이에요.",
+    firstMeeting:
+      "첫 등교, 교실에서 책을 떨어뜨렸어요. 혹시 주워주실 수 있을까요? 저는 유리라고 해요. 이번에 3학년 1반이에요.",
     firstDialogue:
       "아, 죄송해요... 책을 떨어뜨렸네요. 혹시 주워주실 수 있을까요? 저는 유리라고 해요. 이번에 3학년 1반이에요.",
+    disableFirstDialogue: true,
     conversationHint:
       "💡 유리는 조용하고 차분한 성격이에요. 책이나 공부 이야기를 하면 좋아할 거예요.",
     color: "#ec4899",
@@ -35,6 +37,7 @@ export const CHARACTERS = {
     firstMeeting: "점심시간, 급식실에서 혼자 있음",
     firstDialogue:
       "어? 너도 혼자야? 나랑 같이 밥 먹을래? 나 지호야! 농구부인데 ㅋㅋ 같은 반 아니야? 처음 보는 것 같은데!",
+    disableFirstDialogue: true,
     conversationHint:
       "💡 지호는 밝고 활발한 성격이에요. 운동이나 재미있는 이야기를 하면 좋아할 거예요.",
     color: "#3b82f6",
@@ -55,6 +58,7 @@ export const CHARACTERS = {
     firstMeeting: "방과 후, 도서관에서 책 읽는 중",
     firstDialogue:
       "...뭐야? 방해하지 마. 지금 중요한 부분 읽고 있어. 필요한 거 있으면 빨리 말해.",
+    disableFirstDialogue: true,
     conversationHint:
       "💡 세연은 차갑고 논리적인 성격이에요. 지적인 대화나 과학 이야기를 하면 관심을 보일 거예요.",
     color: "#8b5cf6",
@@ -253,6 +257,11 @@ const useGameStore = create((set, get) => ({
   showCharacterDialogue: (characterId) => {
     const character = CHARACTERS[characterId];
 
+    if (character.disableFirstDialogue || !character.firstDialogue) {
+      set({ waitingForClick: false });
+      return;
+    }
+
     get().addMessage({
       type: "character",
       character: characterId,
@@ -445,11 +454,9 @@ const useGameStore = create((set, get) => ({
       messages: state.messages.filter((msg) => msg.timestamp !== timestamp),
     });
 
-    // 클릭 대기 중이었다면 다음 단계 진행
     if (message && message.requiresClick && state.waitingForClick) {
       set({ waitingForClick: false });
 
-      // 캐릭터가 아직 없는 경우 (첫 나레이션) - 유리 만남
       if (
         message.type === "narration" &&
         !state.currentCharacter &&
@@ -458,9 +465,7 @@ const useGameStore = create((set, get) => ({
         setTimeout(() => {
           get().meetCharacter("yuri");
         }, 500);
-      }
-      // 캐릭터 만남 후 대사 표시
-      else if (message.type === "narration" && state.currentCharacter) {
+      } else if (message.type === "narration" && state.currentCharacter) {
         const character = CHARACTERS[state.currentCharacter];
         if (
           character &&
@@ -469,12 +474,14 @@ const useGameStore = create((set, get) => ({
             .length === 0
         ) {
           setTimeout(() => {
-            get().showCharacterDialogue(state.currentCharacter);
+            if (character.disableFirstDialogue || !character.firstDialogue) {
+              get().showHint(state.currentCharacter);
+            } else {
+              get().showCharacterDialogue(state.currentCharacter);
+            }
           }, 500);
         }
-      }
-      // 캐릭터 대사 후 힌트 표시
-      else if (message.type === "character" && message.character) {
+      } else if (message.type === "character" && message.character) {
         setTimeout(() => {
           get().showHint(message.character);
         }, 500);
